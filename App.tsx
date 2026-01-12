@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AnalysisResult, CaseInput } from './types';
 import { analyzeLitigationData } from './services/legalService';
 import { 
@@ -21,24 +21,28 @@ import {
   Globe,
   ExternalLink,
   BookOpen,
-  ArrowRight
+  ArrowRight,
+  Sparkles,
+  Info
 } from 'lucide-react';
 
 const App: React.FC = () => {
   const [caseInfo, setCaseInfo] = useState('');
   const [claims, setClaims] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
-  const [activeTab, setActiveTab] = useState<'input' | 'result' | 'settings'>('input');
+  const [activeTab, setActiveTab] = useState<'input' | 'settings'>('input');
   const [apiKey, setApiKey] = useState(localStorage.getItem('DEEPSEEK_API_KEY') || '');
+  const resultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem('legal_case_web_draft');
     if (saved) {
       try {
-        const { caseInfo, claims } = JSON.parse(saved);
-        setCaseInfo(caseInfo);
-        setClaims(claims);
+        const { caseInfo: sCase, claims: sClaims } = JSON.parse(saved);
+        setCaseInfo(sCase || '');
+        setClaims(sClaims || '');
       } catch(e) {}
     }
     const savedResult = localStorage.getItem('legal_analysis_result');
@@ -54,13 +58,14 @@ const App: React.FC = () => {
   }, [caseInfo, claims]);
 
   const handleAnalyze = async () => {
+    setError(null);
     if (!apiKey) {
-      alert('请先在设置页面配置您的 DeepSeek API Key');
+      setError('请先在“系统配置”中设置您的 DeepSeek API Key');
       setActiveTab('settings');
       return;
     }
     if (!caseInfo.trim() || !claims.trim()) {
-      alert('请完整填写案情事实和诉讼请求');
+      setError('请完整填写案情事实和诉讼请求');
       return;
     }
     
@@ -69,9 +74,14 @@ const App: React.FC = () => {
       const data = await analyzeLitigationData({ caseInfo, claims, evidenceFiles: [] });
       setResult(data);
       localStorage.setItem('legal_analysis_result', JSON.stringify(data));
-      setActiveTab('result');
-    } catch (error: any) {
-      alert(error.message);
+      
+      // 延迟滚动确保 DOM 已渲染
+      setTimeout(() => {
+        resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 300);
+    } catch (err: any) {
+      setError(err.message || '分析过程中发生未知错误');
+      console.error(err);
     } finally {
       setIsLoading(false);
     }
@@ -97,12 +107,12 @@ const App: React.FC = () => {
     });
 
     navigator.clipboard.writeText(md);
-    alert('报告已成功复制到剪贴板 (Markdown 格式)');
+    alert('报告已成功复制到剪贴板');
   };
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col md:flex-row font-sans text-slate-900 selection:bg-blue-100 selection:text-blue-900">
-      {/* Sidebar - Desktop */}
+      {/* Sidebar */}
       <aside className="hidden md:flex w-64 bg-slate-900 flex-col sticky top-0 h-screen p-6 text-white shrink-0">
         <div className="flex items-center gap-3 mb-10">
           <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-900/50">
@@ -115,8 +125,7 @@ const App: React.FC = () => {
         </div>
 
         <nav className="flex-grow space-y-2">
-          <NavBtn active={activeTab === 'input'} onClick={() => setActiveTab('input')} icon={<FileSearch size={18} />} label="案情录入" />
-          <NavBtn active={activeTab === 'result'} onClick={() => setActiveTab('result')} icon={<LayoutDashboard size={18} />} label="分析报告" />
+          <NavBtn active={activeTab === 'input'} onClick={() => setActiveTab('input')} icon={<FileSearch size={18} />} label="工作台" />
           <NavBtn active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<Settings size={18} />} label="系统配置" />
         </nav>
 
@@ -124,14 +133,14 @@ const App: React.FC = () => {
           <div className="p-4 bg-slate-800/50 rounded-2xl">
             <div className="flex items-center gap-2 mb-2">
               <Globe size={12} className="text-blue-400" />
-              <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Cloud Node</span>
+              <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Global Proxy</span>
             </div>
-            <p className="text-[10px] text-slate-500 leading-relaxed font-medium">部署于 Cloudflare Pages 全球边缘网络，国内直连响应。</p>
+            <p className="text-[10px] text-slate-500 leading-relaxed font-medium">代理网关：deepseek-proxy.wxxcxzhuanyong.workers.dev</p>
           </div>
         </div>
       </aside>
 
-      {/* Main Area */}
+      {/* Main Content */}
       <main className="flex-grow flex flex-col min-w-0 pb-20 md:pb-0">
         <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-40 md:static">
           <div className="flex items-center gap-3 md:hidden">
@@ -141,12 +150,12 @@ const App: React.FC = () => {
           <div className="hidden md:flex items-center gap-2 text-slate-400 text-[10px] font-bold uppercase tracking-[0.2em]">
             <span>Workflow</span>
             <ArrowRight size={10} />
-            <span className="text-slate-900">{activeTab === 'input' ? 'Entry' : activeTab === 'result' ? 'Report' : 'Settings'}</span>
+            <span className="text-slate-900">{activeTab === 'input' ? 'Analysis Workbench' : 'Settings'}</span>
           </div>
           <div className="flex items-center gap-3">
-             {result && activeTab === 'result' && (
+             {result && activeTab === 'input' && (
                <button onClick={copyReportAsMarkdown} className="flex items-center gap-2 text-[10px] font-black bg-slate-900 text-white px-4 py-2 rounded-full hover:bg-blue-600 transition-all">
-                 <Copy size={12} /> 导出分析报告
+                 <Copy size={12} /> 复制报告
                </button>
              )}
           </div>
@@ -155,6 +164,23 @@ const App: React.FC = () => {
         <div className="p-4 md:p-8 max-w-5xl mx-auto w-full">
           {activeTab === 'input' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+              {/* Error Message Area */}
+              {error && (
+                <div className="bg-rose-50 border border-rose-200 p-6 rounded-3xl flex items-start gap-4 animate-in fade-in zoom-in-95 duration-300">
+                  <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center shrink-0">
+                    <AlertTriangle className="text-rose-600" size={20} />
+                  </div>
+                  <div>
+                    <h4 className="text-rose-900 font-black text-sm uppercase tracking-widest mb-1">请求执行失败</h4>
+                    <p className="text-rose-700 text-xs font-medium leading-relaxed">{error}</p>
+                    <div className="mt-3 flex gap-4">
+                      <button onClick={handleAnalyze} className="text-[10px] font-black text-rose-800 underline uppercase tracking-widest hover:text-rose-600">重试请求</button>
+                      <button onClick={() => setActiveTab('settings')} className="text-[10px] font-black text-rose-800 underline uppercase tracking-widest hover:text-rose-600">检查配置</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="bg-white rounded-[2rem] shadow-sm border border-slate-200 p-6 md:p-10">
                 <div className="flex items-center gap-3 mb-6">
                   <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
@@ -163,8 +189,8 @@ const App: React.FC = () => {
                   <label className="text-xs font-black text-slate-400 uppercase tracking-widest">案情基本事实</label>
                 </div>
                 <textarea 
-                  className="w-full h-72 p-6 bg-slate-50 border border-slate-200 rounded-3xl focus:ring-4 focus:ring-blue-100 focus:bg-white outline-none text-sm leading-[1.8] transition-all resize-none font-medium"
-                  placeholder="请输入案件经过，包含时间、地点、人物及争议点。例如：2023年3月，我方通过微信向被告订购了一批电子元件，约定货到付款，但被告至今未履行..."
+                  className="w-full h-64 p-6 bg-slate-50 border border-slate-200 rounded-3xl focus:ring-4 focus:ring-blue-100 focus:bg-white outline-none text-sm leading-[1.8] transition-all resize-none font-medium"
+                  placeholder="请输入案件经过..."
                   value={caseInfo}
                   onChange={(e) => setCaseInfo(e.target.value)}
                 />
@@ -179,7 +205,7 @@ const App: React.FC = () => {
                 </div>
                 <textarea 
                   className="w-full h-24 p-6 bg-slate-50 border border-slate-200 rounded-3xl focus:ring-4 focus:ring-blue-100 focus:bg-white outline-none text-sm leading-relaxed transition-all resize-none font-medium"
-                  placeholder="例如：判令被告向原告支付货款5万元及利息..."
+                  placeholder="例如：判令被告支付货款..."
                   value={claims}
                   onChange={(e) => setClaims(e.target.value)}
                 />
@@ -191,37 +217,30 @@ const App: React.FC = () => {
                 className="w-full py-6 bg-blue-600 text-white rounded-3xl font-black text-base shadow-2xl shadow-blue-200 hover:bg-blue-700 active:scale-[0.99] transition-all flex items-center justify-center gap-3 disabled:bg-slate-300 disabled:shadow-none"
               >
                 {isLoading ? <Loader2 className="animate-spin" size={24} /> : <Zap size={24} />}
-                {isLoading ? 'DEEPSEEK 正在进行法理逻辑分析...' : '提交 AI 进行专业证据矩阵分析'}
+                {isLoading ? '正在进行法律逻辑推理...' : '生成证据矩阵报告'}
               </button>
-            </div>
-          )}
 
-          {activeTab === 'result' && (
-            <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-700 pb-20">
-              {!result ? (
-                <div className="bg-white rounded-[3rem] p-24 text-center border-2 border-dashed border-slate-200 flex flex-col items-center">
-                  <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-6">
-                    <FileSearch size={40} className="text-slate-200" />
+              {/* Analysis Result Display */}
+              {result && (
+                <div ref={resultRef} className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20 border-t border-slate-200 pt-12">
+                  <div className="flex items-center gap-3 mb-2">
+                    <Sparkles className="text-amber-500" size={24} />
+                    <h2 className="text-2xl font-black tracking-tight text-slate-800">深度法律分析报告</h2>
                   </div>
-                  <h3 className="text-slate-800 font-black text-xl mb-2">等待数据录入</h3>
-                  <p className="text-slate-400 text-sm max-w-xs mx-auto">请先在“案情录入”页面描述您的案件详情，点击分析按钮后此处将呈现报告</p>
-                </div>
-              ) : (
-                <>
+
                   <section className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden">
                     <div className="px-10 py-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <Layers size={20} className="text-blue-600" />
-                        <h3 className="font-black text-sm uppercase tracking-widest">证据项与待证事实</h3>
+                        <h3 className="font-black text-sm uppercase tracking-widest">证据项与待证事实矩阵</h3>
                       </div>
-                      <span className="text-[10px] font-black text-slate-400 bg-white px-3 py-1 rounded-full border border-slate-100">AI 推理引擎 v3.0</span>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left">
                         <thead>
                           <tr className="bg-slate-50/30 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
                             <th className="px-10 py-5">证据项名称</th>
-                            <th className="px-10 py-5">证明对象 (拟证明事实)</th>
+                            <th className="px-10 py-5">拟证明事实</th>
                             <th className="px-10 py-5 text-center">证明力</th>
                           </tr>
                         </thead>
@@ -235,7 +254,7 @@ const App: React.FC = () => {
                                   item.reliability === 'High' ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 
                                   item.reliability === 'Medium' ? 'bg-amber-50 text-amber-600 border border-amber-100' : 'bg-rose-50 text-rose-600 border border-rose-100'
                                 }`}>
-                                  {item.reliability === 'High' ? '强证明力' : item.reliability === 'Medium' ? '中等' : '需补强'}
+                                  {item.reliability === 'High' ? '强' : item.reliability === 'Medium' ? '中' : '弱'}
                                 </span>
                               </td>
                             </tr>
@@ -251,13 +270,13 @@ const App: React.FC = () => {
                         <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center">
                           <CheckCircle size={22} className="text-emerald-500" />
                         </div>
-                        <h3 className="font-black text-sm uppercase tracking-widest">证据链补强建议</h3>
+                        <h3 className="font-black text-sm uppercase tracking-widest">补强建议</h3>
                       </div>
                       <div className="space-y-8">
                         {result.reinforcement.map((item, i) => (
                           <div key={i} className="group border-l-4 border-slate-100 pl-6 py-1 hover:border-blue-400 transition-all">
                             <h4 className="text-sm font-black text-slate-800 mb-2">{item.gap}</h4>
-                            <p className="text-xs text-slate-500 leading-relaxed font-medium">建议操作：{item.suggestion}</p>
+                            <p className="text-xs text-slate-500 leading-relaxed font-medium">{item.suggestion}</p>
                           </div>
                         ))}
                       </div>
@@ -268,12 +287,12 @@ const App: React.FC = () => {
                         <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center">
                           <AlertTriangle size={22} className="text-rose-500" />
                         </div>
-                        <h3 className="font-black text-sm uppercase tracking-widest">诉讼法律风险</h3>
+                        <h3 className="font-black text-sm uppercase tracking-widest">诉讼风险</h3>
                       </div>
                       <div className="space-y-6">
                         {result.risks.map((item, i) => (
                           <div key={i} className="bg-rose-50/20 p-6 rounded-3xl border border-rose-100/50">
-                            <h4 className="text-xs font-black text-rose-700 mb-2 uppercase tracking-wide">风险：{item.riskPoint}</h4>
+                            <h4 className="text-xs font-black text-rose-700 mb-2 uppercase tracking-wide">{item.riskPoint}</h4>
                             <p className="text-xs text-slate-600 mb-4 leading-relaxed">{item.description}</p>
                             <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-rose-100/50">
                               <ShieldCheck size={12} className="text-blue-600" />
@@ -290,22 +309,22 @@ const App: React.FC = () => {
                       <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
                         <BookOpen size={20} />
                       </div>
-                      <h3 className="font-black text-sm uppercase tracking-widest">相似类案与裁判逻辑参考</h3>
+                      <h3 className="font-black text-sm uppercase tracking-widest">相似类案与裁判参考</h3>
                     </div>
                     <div className="grid md:grid-cols-2 gap-6">
                       {result.caseLaw.map((item, i) => (
                         <div key={i} className="bg-slate-800/50 p-6 rounded-3xl border border-slate-700 hover:bg-slate-800 transition-all">
                           <div className="flex items-center justify-between mb-3">
-                            <h4 className="text-sm font-black text-blue-400">{item.title}</h4>
-                            <span className="text-[9px] font-black uppercase text-slate-500">{item.year}</span>
+                            <h4 className="text-sm font-black text-blue-400 leading-tight pr-4">{item.title}</h4>
+                            <span className="text-[9px] font-black uppercase text-slate-500 shrink-0">{item.year}</span>
                           </div>
-                          <p className="text-[11px] text-slate-400 leading-relaxed mb-4">{item.summary}</p>
+                          <p className="text-[11px] text-slate-400 leading-relaxed mb-4 line-clamp-3">{item.summary}</p>
                           <div className="text-[9px] font-black text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded inline-block">结果：{item.outcome}</div>
                         </div>
                       ))}
                     </div>
                   </section>
-                </>
+                </div>
               )}
             </div>
           )}
@@ -315,10 +334,10 @@ const App: React.FC = () => {
               <div className="bg-white rounded-[3rem] p-10 shadow-sm border border-slate-200">
                 <div className="flex flex-col items-center text-center mb-10">
                   <div className="w-20 h-20 bg-blue-50 rounded-[2rem] flex items-center justify-center mb-6">
-                    <ShieldCheck className="text-blue-600" size={36} />
+                    <Key className="text-blue-600" size={36} />
                   </div>
-                  <h3 className="font-black text-xl mb-2">安全与配置</h3>
-                  <p className="text-slate-400 text-xs">您的数据通过加密协议传输，API Key 仅本地存储。</p>
+                  <h3 className="font-black text-xl mb-2">服务接入配置</h3>
+                  <p className="text-slate-400 text-xs">通过私有代理网关安全访问 DeepSeek 模型</p>
                 </div>
                 
                 <div className="space-y-8">
@@ -327,77 +346,60 @@ const App: React.FC = () => {
                     <input 
                       type="password"
                       className="w-full p-5 bg-slate-50 border border-slate-200 rounded-3xl focus:ring-4 focus:ring-blue-100 focus:bg-white outline-none text-sm font-mono transition-all"
-                      placeholder="输入您的 sk-..."
+                      placeholder="sk-..."
                       value={apiKey}
                       onChange={(e) => {
                         setApiKey(e.target.value);
                         localStorage.setItem('DEEPSEEK_API_KEY', e.target.value);
                       }}
                     />
-                    <Key className="absolute right-6 top-11 text-slate-300 group-focus-within:text-blue-400 transition-colors" size={20} />
                   </div>
 
-                  <div className="p-6 bg-blue-50 rounded-3xl border border-blue-100 flex gap-4">
-                    <Globe className="text-blue-500 shrink-0" size={20} />
-                    <p className="text-[11px] text-blue-800 font-medium leading-relaxed">
-                      当前版本已针对 **Cloudflare Pages** 进行优化。无需域名备案即可在国内稳定使用。如需更换 DeepSeek 模型，请在 API 配置中进行调整。
-                    </p>
+                  <div className="p-6 bg-slate-50 rounded-3xl border border-slate-200 flex gap-4">
+                    <Info className="text-slate-400 shrink-0" size={20} />
+                    <div className="space-y-2">
+                      <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
+                        当前使用代理：<br/><code className="text-blue-600">deepseek-proxy.wxxcxzhuanyong.workers.dev</code>
+                      </p>
+                      <p className="text-[10px] text-slate-400">若点击提交无响应，请按下 F12 查看 Console 控制台是否有报错。</p>
+                    </div>
                   </div>
 
                   <button 
-                    onClick={() => { if(confirm('确定要清除所有录入数据和设置吗？')) { localStorage.clear(); window.location.reload(); }}}
+                    onClick={() => { if(confirm('重置将清除所有录入数据？')) { localStorage.clear(); window.location.reload(); }}}
                     className="w-full py-5 text-rose-500 font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-rose-50 rounded-2xl transition-all"
                   >
-                    <Trash2 size={16} /> 重置所有本地数据
+                    <Trash2 size={16} /> 重置本地所有数据
                   </button>
                 </div>
-              </div>
-
-              <div className="flex justify-center gap-6">
-                 <a href="https://platform.deepseek.com/" target="_blank" className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-blue-600 flex items-center gap-1">获取 API Key <ExternalLink size={10}/></a>
-                 <a href="https://pages.cloudflare.com/" target="_blank" className="text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-blue-600 flex items-center gap-1">托管说明 <ExternalLink size={10}/></a>
               </div>
             </div>
           )}
         </div>
 
-        {/* Bottom Bar - Mobile */}
+        {/* Bottom Bar Mobile */}
         <nav className="fixed bottom-0 inset-x-0 h-16 bg-white border-t border-slate-200 flex items-center justify-around z-50 md:hidden px-6">
-          <MobileNavBtn active={activeTab === 'input'} onClick={() => setActiveTab('input')} icon={<FileSearch size={22} />} label="录入" />
-          <MobileNavBtn active={activeTab === 'result'} onClick={() => setActiveTab('result')} icon={<LayoutDashboard size={22} />} label="报告" />
+          <MobileNavBtn active={activeTab === 'input'} onClick={() => setActiveTab('input')} icon={<LayoutDashboard size={22} />} label="工作台" />
           <MobileNavBtn active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<Settings size={22} />} label="设置" />
         </nav>
       </main>
 
       <style>{`
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 10px; }
-        ::-webkit-scrollbar-track { background: transparent; }
         @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
-        .animate-in { animation: fade-in 0.5s ease-out; }
+        .animate-in { animation: fade-in 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
       `}</style>
     </div>
   );
 };
 
 const NavBtn = ({ active, onClick, icon, label }: any) => (
-  <button 
-    onClick={onClick}
-    className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-sm ${
-      active ? 'bg-blue-600 text-white shadow-xl shadow-blue-900/40' : 'text-slate-400 hover:text-white hover:bg-slate-800'
-    }`}
-  >
+  <button onClick={onClick} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all font-bold text-sm ${active ? 'bg-blue-600 text-white shadow-xl shadow-blue-900/40' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}>
     {icon} {label}
   </button>
 );
 
 const MobileNavBtn = ({ active, onClick, icon, label }: any) => (
-  <button 
-    onClick={onClick}
-    className={`flex flex-col items-center gap-1 transition-all ${
-      active ? 'text-blue-600' : 'text-slate-300'
-    }`}
-  >
+  <button onClick={onClick} className={`flex flex-col items-center gap-1 transition-all ${active ? 'text-blue-600' : 'text-slate-300'}`}>
     {icon}
     <span className="text-[9px] font-black uppercase tracking-widest">{label}</span>
   </button>
