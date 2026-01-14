@@ -6,7 +6,7 @@ import {
   FileText, Layers, Settings, CheckCircle, AlertTriangle, Gavel, 
   Loader2, ShieldCheck, Scale, Trash2, Key, Zap, Copy, FileSearch, 
   BookOpen, ArrowRight, Sparkles, Info, Lock, Unlock, ShieldAlert,
-  Sword, BookMarked, MessageSquareText, Landmark
+  Sword, BookMarked, MessageSquareText, Landmark, RefreshCw, PlusCircle
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -46,7 +46,17 @@ const App: React.FC = () => {
     }
     const savedResult = localStorage.getItem('legal_analysis_result');
     if (savedResult) {
-      try { setResult(JSON.parse(savedResult)); } catch(e) {}
+      try { 
+        const parsed = JSON.parse(savedResult);
+        // 增加数据结构完整性验证，如果不是对象或者缺失关键数组，则不加载
+        if (parsed && typeof parsed === 'object' && Array.isArray(parsed.evidenceList || [])) {
+          setResult(parsed); 
+        } else {
+          localStorage.removeItem('legal_analysis_result');
+        }
+      } catch(e) {
+        localStorage.removeItem('legal_analysis_result');
+      }
     }
   }, []);
 
@@ -75,10 +85,20 @@ const App: React.FC = () => {
     }
   };
 
+  const clearSession = () => {
+    if (window.confirm("确定要清除当前案情和分析结果吗？")) {
+      setCaseInfo('');
+      setClaims('');
+      setResult(null);
+      localStorage.removeItem('legal_case_web_draft');
+      localStorage.removeItem('legal_analysis_result');
+    }
+  };
+
   const copyReport = () => {
     if (!result) return;
     navigator.clipboard.writeText(JSON.stringify(result, null, 2));
-    alert('结构化报告已复制');
+    alert('结构化报告已复制到剪贴板');
   };
 
   return (
@@ -103,8 +123,8 @@ const App: React.FC = () => {
         <div className="mt-auto pt-6 border-t border-slate-800">
           <div className="p-4 bg-slate-800/50 rounded-2xl flex items-center justify-between">
             <div className="space-y-1">
-              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">DeepSeek Official</span>
-              <p className="text-[10px] text-emerald-400 font-bold flex items-center gap-1"><ShieldCheck size={10} /> 加密安全通道</p>
+              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">DeepSeek Engine</span>
+              <p className="text-[10px] text-emerald-400 font-bold flex items-center gap-1"><ShieldCheck size={10} /> 安全加密通道</p>
             </div>
             {devMode ? <Unlock size={14} className="text-blue-400" /> : <Lock size={14} className="text-slate-600" />}
           </div>
@@ -112,14 +132,17 @@ const App: React.FC = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-grow flex flex-col min-w-0">
-        <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-40">
+      <main className="flex-grow flex flex-col min-w-0 overflow-y-auto">
+        <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-50">
           <div className="flex items-center gap-2 text-slate-400 text-[10px] font-bold uppercase tracking-[0.2em]">
             <span>Legal Analysis</span>
             <ArrowRight size={10} />
             <span className="text-slate-900">{activeTab === 'input' ? 'Workbench' : 'Settings'}</span>
           </div>
           <div className="flex items-center gap-3">
+             <button onClick={clearSession} title="重置" className="p-2 text-slate-400 hover:text-rose-500 transition-colors">
+               <RefreshCw size={18} />
+             </button>
              {result && activeTab === 'input' && (
                <button onClick={copyReport} className="flex items-center gap-2 text-[10px] font-black bg-slate-900 text-white px-4 py-2 rounded-full hover:bg-blue-600 transition-all active:scale-95">
                  <Copy size={12} /> 复制报告
@@ -150,7 +173,7 @@ const App: React.FC = () => {
                     </div>
                     <textarea 
                       className="w-full h-80 p-6 bg-slate-50 border border-slate-200 rounded-3xl focus:ring-4 focus:ring-blue-100 outline-none text-sm leading-[1.8] transition-all resize-none"
-                      placeholder="请详尽输入案件事实经过..."
+                      placeholder="请详尽输入案件事实经过，包括时间、人物、起因、经过、结果..."
                       value={caseInfo}
                       onChange={(e) => setCaseInfo(e.target.value)}
                     />
@@ -165,7 +188,7 @@ const App: React.FC = () => {
                     </div>
                     <textarea 
                       className="w-full h-40 p-6 bg-slate-50 border border-slate-200 rounded-3xl focus:ring-4 focus:ring-blue-100 outline-none text-sm transition-all resize-none"
-                      placeholder="判令被告支付..."
+                      placeholder="例如：1.判令被告偿还贷款20万元及利息；2.本案诉讼费由被告承担。"
                       value={claims}
                       onChange={(e) => setClaims(e.target.value)}
                     />
@@ -183,7 +206,7 @@ const App: React.FC = () => {
               </div>
 
               {result && (
-                <div ref={resultRef} className="space-y-10 pt-12 animate-in">
+                <div ref={resultRef} className="space-y-10 pt-12 animate-in pb-20">
                   <div className="flex items-center gap-3">
                     <Sparkles className="text-amber-500" size={28} />
                     <h2 className="text-3xl font-black text-slate-800 tracking-tight">结构化法律分析报告</h2>
@@ -198,7 +221,7 @@ const App: React.FC = () => {
                       </div>
                       <h3 className="text-lg font-black uppercase tracking-widest">核心诉讼方案</h3>
                     </div>
-                    <p className="text-lg leading-relaxed text-blue-50/90 font-medium">{result.strategy}</p>
+                    <p className="text-lg leading-relaxed text-blue-50/90 font-medium">{result.strategy || "暂无方案内容"}</p>
                   </div>
 
                   {/* 证据矩阵 */}
@@ -217,38 +240,65 @@ const App: React.FC = () => {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50">
-                          {result.evidenceList.map((item, i) => (
+                          {(result.evidenceList || []).map((item, i) => (
                             <tr key={i} className="hover:bg-slate-50/50 transition-colors">
-                              <td className="px-10 py-6 font-bold text-slate-800 text-sm">{item.name}</td>
-                              <td className="px-10 py-6 text-slate-600 text-sm leading-relaxed">{item.provedFact}</td>
+                              <td className="px-10 py-6 font-bold text-slate-800 text-sm">{item?.name || '未知证据'}</td>
+                              <td className="px-10 py-6 text-slate-600 text-sm leading-relaxed">{item?.provedFact || '未知事实'}</td>
                               <td className="px-10 py-6 text-center">
                                 <span className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase ${
-                                  item.reliability === 'High' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                                  item?.reliability === 'High' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
                                 }`}>
-                                  {item.reliability === 'High' ? '强' : '中/弱'}
+                                  {item?.reliability === 'High' ? '强' : '中/弱'}
                                 </span>
                               </td>
                             </tr>
                           ))}
+                          {(!result.evidenceList || result.evidenceList.length === 0) && (
+                            <tr><td colSpan={3} className="px-10 py-6 text-center text-slate-400 text-xs">暂无证据项分析</td></tr>
+                          )}
                         </tbody>
                       </table>
                     </div>
                   </div>
 
+                  {/* 证据补强建议 - 之前缺失的模块 */}
+                  <section className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 p-10">
+                    <div className="flex items-center gap-4 mb-8">
+                      <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center">
+                        <PlusCircle size={22} className="text-indigo-600" />
+                      </div>
+                      <h3 className="font-black text-sm uppercase tracking-widest">证据补强建议</h3>
+                    </div>
+                    <div className="grid md:grid-cols-2 gap-6">
+                      {(result.reinforcement || []).map((item, i) => (
+                        <div key={i} className="p-6 bg-indigo-50/30 rounded-3xl border border-indigo-100/50 flex flex-col">
+                          <div className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2">存在缺口</div>
+                          <p className="text-sm font-bold text-slate-800 mb-4">{item?.gap || '未识别具体缺口'}</p>
+                          <div className="mt-auto pt-4 border-t border-indigo-100/50">
+                            <div className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-2 flex items-center gap-1">
+                              <CheckCircle size={10} /> 补强方案
+                            </div>
+                            <p className="text-xs text-slate-600 leading-relaxed">{item?.suggestion || '暂无具体建议'}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
                   <div className="grid md:grid-cols-2 gap-8">
-                    {/* 关键争议点 */}
+                    {/* 关键法律焦点 */}
                     <section className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 p-10">
                       <div className="flex items-center gap-4 mb-8">
                         <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center">
                           <MessageSquareText size={22} className="text-blue-600" />
                         </div>
-                        <h3 className="font-black text-sm uppercase tracking-widest">关键争议点</h3>
+                        <h3 className="font-black text-sm uppercase tracking-widest">关键法律焦点</h3>
                       </div>
                       <div className="space-y-4">
-                        {result.keyPoints.map((point, i) => (
+                        {(result.keyPoints || []).map((point, i) => (
                           <div key={i} className="flex gap-4 items-start bg-slate-50 p-5 rounded-2xl group hover:bg-white hover:shadow-lg transition-all border border-transparent hover:border-blue-100">
                             <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-[10px] font-black text-blue-600 shrink-0">{i+1}</div>
-                            <p className="text-sm font-bold text-slate-700">{point}</p>
+                            <p className="text-sm font-bold text-slate-700">{point || '未提炼关键点'}</p>
                           </div>
                         ))}
                       </div>
@@ -260,15 +310,15 @@ const App: React.FC = () => {
                         <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center">
                           <ShieldAlert size={22} className="text-rose-600" />
                         </div>
-                        <h3 className="font-black text-sm uppercase tracking-widest">诉讼风险预警</h3>
+                        <h3 className="font-black text-sm uppercase tracking-widest">诉讼风险评估</h3>
                       </div>
                       <div className="space-y-4">
-                        {result.risks.map((risk, i) => (
+                        {(result.risks || []).map((risk, i) => (
                           <div key={i} className="p-6 bg-rose-50/30 rounded-3xl border border-rose-100/50">
-                            <h4 className="text-sm font-black text-rose-800 mb-2">{risk.riskPoint}</h4>
-                            <p className="text-xs text-slate-500 mb-4">{risk.description}</p>
-                            <div className="bg-white px-3 py-2 rounded-xl text-[10px] font-black text-blue-600 inline-flex items-center gap-2 border border-blue-50">
-                              <CheckCircle size={10} /> {risk.mitigation}
+                            <h4 className="text-sm font-black text-rose-800 mb-2">{risk?.riskPoint || '未知风险'}</h4>
+                            <p className="text-xs text-slate-500 mb-4">{risk?.description || '暂无描述'}</p>
+                            <div className="bg-white px-3 py-2 rounded-xl text-[10px] font-black text-blue-600 inline-flex items-center gap-2 border border-blue-50 shadow-sm">
+                              <CheckCircle size={10} /> 应对方案：{risk?.mitigation || '等待方案生成'}
                             </div>
                           </div>
                         ))}
@@ -282,18 +332,18 @@ const App: React.FC = () => {
                       <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center">
                         <Sword size={22} className="text-amber-600" />
                       </div>
-                      <h3 className="font-black text-sm uppercase tracking-widest">模拟法庭对抗</h3>
+                      <h3 className="font-black text-sm uppercase tracking-widest">模拟法庭对抗分析</h3>
                     </div>
                     <div className="grid md:grid-cols-2 gap-8">
-                      {result.confrontation.map((item, i) => (
+                      {(result.confrontation || []).map((item, i) => (
                         <div key={i} className="space-y-4">
-                          <div className="p-6 bg-slate-900 text-white rounded-[2rem] relative">
-                            <span className="absolute -top-3 left-6 px-3 py-1 bg-rose-500 text-[10px] font-black uppercase rounded-full">对方辩称</span>
-                            <p className="text-sm font-medium opacity-90">{item.opponentArgument}</p>
+                          <div className="p-6 bg-slate-900 text-white rounded-[2rem] relative shadow-lg">
+                            <span className="absolute -top-3 left-6 px-3 py-1 bg-rose-500 text-[10px] font-black uppercase rounded-full shadow-md">对方抗辩可能</span>
+                            <p className="text-sm font-medium opacity-90">{item?.opponentArgument || '未识别抗辩点'}</p>
                           </div>
-                          <div className="p-6 bg-emerald-50 rounded-[2rem] border border-emerald-100 relative">
-                            <span className="absolute -top-3 left-6 px-3 py-1 bg-emerald-500 text-white text-[10px] font-black uppercase rounded-full text-center">反击方案</span>
-                            <p className="text-sm font-bold text-emerald-900">{item.counterStrategy}</p>
+                          <div className="p-6 bg-emerald-50 rounded-[2rem] border border-emerald-100 relative shadow-sm">
+                            <span className="absolute -top-3 left-6 px-3 py-1 bg-emerald-500 text-white text-[10px] font-black uppercase rounded-full shadow-md">我方应对策略</span>
+                            <p className="text-sm font-bold text-emerald-900">{item?.counterStrategy || '未识别应对点'}</p>
                           </div>
                         </div>
                       ))}
@@ -305,33 +355,34 @@ const App: React.FC = () => {
                     <div className="lg:col-span-1 bg-blue-600 rounded-[2.5rem] p-10 text-white shadow-xl">
                       <div className="flex items-center gap-4 mb-8">
                         <BookMarked size={24} />
-                        <h3 className="font-black text-sm uppercase tracking-widest">相关法律条文</h3>
+                        <h3 className="font-black text-sm uppercase tracking-widest">引用法律依据</h3>
                       </div>
                       <div className="space-y-8">
-                        {result.statutes.map((item, i) => (
-                          <div key={i} className="border-l-2 border-blue-400 pl-4">
-                            <h4 className="text-xs font-black uppercase tracking-wide text-blue-200 mb-2">{item.name}</h4>
-                            <p className="text-sm leading-relaxed text-blue-50 font-medium">{item.content}</p>
+                        {(result.statutes || []).map((item, i) => (
+                          <div key={i} className="border-l-2 border-blue-300 pl-4">
+                            <h4 className="text-xs font-black uppercase tracking-wide text-blue-100 mb-2">{item?.name || '未知法条'}</h4>
+                            <p className="text-sm leading-relaxed text-blue-50 font-medium">{item?.content || '内容缺失'}</p>
                           </div>
                         ))}
+                        {(!result.statutes || result.statutes.length === 0) && <p className="text-xs text-blue-200 italic">未匹配到精确法条</p>}
                       </div>
                     </div>
 
                     <div className="lg:col-span-2 bg-white rounded-[2.5rem] shadow-sm border border-slate-200 p-10">
                       <div className="flex items-center gap-4 mb-8">
                         <Landmark size={24} className="text-slate-400" />
-                        <h3 className="font-black text-sm uppercase tracking-widest text-slate-400">相似类案参考</h3>
+                        <h3 className="font-black text-sm uppercase tracking-widest text-slate-400">参考类案分析</h3>
                       </div>
                       <div className="grid sm:grid-cols-2 gap-6">
-                        {result.caseLaw.map((item, i) => (
-                          <div key={i} className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex flex-col h-full">
+                        {(result.caseLaw || []).map((item, i) => (
+                          <div key={i} className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex flex-col h-full hover:shadow-md transition-shadow">
                             <div className="flex justify-between mb-3">
-                              <h4 className="text-sm font-black text-slate-800 line-clamp-2">{item.title}</h4>
+                              <h4 className="text-sm font-black text-slate-800 line-clamp-2">{item?.title || '未知案件'}</h4>
                             </div>
-                            <p className="text-[11px] text-slate-500 mb-6 flex-grow leading-relaxed">{item.summary}</p>
+                            <p className="text-[11px] text-slate-500 mb-6 flex-grow leading-relaxed">{item?.summary || '无摘要内容'}</p>
                             <div className="mt-auto pt-4 border-t border-slate-200 flex justify-between items-center">
-                              <span className="text-[9px] font-black text-slate-400">{item.court} | {item.year}</span>
-                              <span className="text-[9px] font-black text-emerald-600 uppercase tracking-tighter">结果：{item.outcome}</span>
+                              <span className="text-[9px] font-black text-slate-400">{item?.court || '法院未知'} | {item?.year || '年份未知'}</span>
+                              <span className="text-[9px] font-black text-emerald-600 uppercase tracking-tighter bg-emerald-50 px-2 py-1 rounded">判决：{item?.outcome || '结果缺失'}</span>
                             </div>
                           </div>
                         ))}
@@ -368,8 +419,12 @@ const App: React.FC = () => {
                       }}
                     />
                   </div>
+                  <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 flex gap-3">
+                    <Info size={18} className="text-amber-600 shrink-0" />
+                    <p className="text-[10px] text-amber-800 leading-relaxed font-medium">注意：修改 Key 后建议清除缓存并重新运行。直接双击 HTML 运行时，请确保浏览器允许跨域请求或已安装相关插件。</p>
+                  </div>
                   <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="w-full py-5 text-rose-500 font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-rose-50 rounded-2xl transition-all active:scale-95">
-                    <Trash2 size={16} /> 清除全部缓存并重启
+                    <Trash2 size={16} /> 彻底清除全部缓存并重启
                   </button>
                 </div>
               </div>
@@ -384,6 +439,21 @@ const App: React.FC = () => {
           to { opacity: 1; transform: translateY(0); } 
         }
         .animate-in { animation: fade-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        
+        /* 自定义滚动条 */
+        ::-webkit-scrollbar {
+          width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+          background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+          background: #cbd5e1;
+          border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+          background: #94a3b8;
+        }
       `}</style>
     </div>
   );

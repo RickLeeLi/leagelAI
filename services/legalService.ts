@@ -22,17 +22,17 @@ export const analyzeLitigationData = async (
   }
 
   const systemPrompt = `你是一位专注中国民商事诉讼的资深大律师。
-请基于《民法典》及证据规定，对输入的案情进行全维度法律分析。
-必须严格输出合法的 JSON 对象，内容包含：
-1. evidenceList: 证据清单 (name, provedFact, reliability: 'High'|'Medium'|'Low')
-2. strategy: 核心诉讼策略与执行方案建议
-3. keyPoints: 案情中的3-5个关键法律争议点或事实焦点
-4. reinforcement: 证据补强建议 (gap, suggestion)
-5. risks: 诉讼风险评估 (riskPoint, description, mitigation)
-6. confrontation: 模拟法庭对抗 (opponentArgument, counterStrategy)
-7. statutes: 引用的具体法律条文 (name, content)
-8. caseLaw: 相似类案摘要 (title, court, year, summary, outcome)
-注意：所有回答必须基于中国现行法律。不要包含 Markdown 标签。`;
+请基于《民法典》、《民事诉讼法》及其证据规定，对输入的案情进行全维度法律分析。
+必须严格输出合法的 JSON 对象，内容严禁缺失以下任何一个键：
+1. evidenceList: 数组，每个对象包含 (name, provedFact, reliability: 'High'|'Medium'|'Low')
+2. strategy: 字符串，核心诉讼策略与执行方案
+3. keyPoints: 字符串数组，3-5个关键法律争议点
+4. reinforcement: 数组，每个对象包含 (gap, suggestion) 证据补强建议
+5. risks: 数组，每个对象包含 (riskPoint, description, mitigation) 风险评估
+6. confrontation: 数组，每个对象包含 (opponentArgument, counterStrategy) 模拟对抗
+7. statutes: 数组，每个对象包含 (name, content) 引用法条
+8. caseLaw: 数组，每个对象包含 (title, court, year, summary, outcome) 类案参考
+注意：所有内容必须符合中国现行法律。不要包含 Markdown 代码块标签，直接输出 JSON 文本。`;
 
   const userPrompt = `案情描述：${input.caseInfo}\n诉讼请求：${input.claims}`;
 
@@ -62,7 +62,20 @@ export const analyzeLitigationData = async (
     if (content.startsWith("```")) {
       content = content.replace(/^```json\n?/, "").replace(/\n?```$/, "");
     }
-    return JSON.parse(content) as AnalysisResult;
+    
+    const result = JSON.parse(content);
+    
+    // 强制补全可能缺失的字段，确保 UI 不会崩溃
+    return {
+      evidenceList: result.evidenceList || [],
+      strategy: result.strategy || "",
+      keyPoints: result.keyPoints || [],
+      reinforcement: result.reinforcement || [],
+      risks: result.risks || [],
+      confrontation: result.confrontation || [],
+      statutes: result.statutes || [],
+      caseLaw: result.caseLaw || []
+    } as AnalysisResult;
   } catch (error: any) {
     throw error;
   }
