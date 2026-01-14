@@ -1,16 +1,34 @@
 
 import { AnalysisResult, CaseInput } from "../types";
 
+// ========================================================
+// ！！！在此处填入你生成的 Base64 字符串 ！！！
+// 只有在这里填入，其他用户访问你的网址时才不需要输入 Key
+// ========================================================
+const EMBEDDED_KEY_B64 = "c2stMjkxOGE3ZDIxNmMxNGE0YmI1MTZiMTU0ZmFiZmY2Y2Y="; // 例如: "c2stTjZleU1S..."
+
 /**
  * 法律分析核心服务
  */
 export const analyzeLitigationData = async (
   input: CaseInput
 ): Promise<AnalysisResult> => {
-  const apiKey = localStorage.getItem('DEEPSEEK_API_KEY');
+  // 优先级：
+  // 1. 浏览器本地手动录入的 Key (优先级最高，方便你随时临时更换测试)
+  // 2. 代码硬编码内置的 Key (供普通访问者使用)
+  const manualKey = localStorage.getItem('DEEPSEEK_API_KEY');
+  let apiKey = manualKey;
+
+  if (!apiKey && EMBEDDED_KEY_B64) {
+    try {
+      apiKey = atob(EMBEDDED_KEY_B64);
+    } catch (e) {
+      console.error("内置 Key 解析失败，请检查 Base64 格式是否正确");
+    }
+  }
   
   if (!apiKey) {
-    throw new Error("请在“系统配置”页面设置您的 DeepSeek API Key");
+    throw new Error("服务未配置：内置 Key 为空且未手动设置。请进入开发者模式进行配置。");
   }
 
   const systemPrompt = `你是一位专注中国诉讼的资深律师。请基于《民事诉讼法》及证据规定，对案情进行深度证据矩阵分析。
@@ -27,7 +45,6 @@ JSON 结构需包含：
 请针对以上内容生成证据矩阵报告。`;
 
   try {
-    // 改为直接请求 DeepSeek 官方接口
     const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -53,33 +70,27 @@ JSON 结构需包含：
         errorInfo = { error: { message: errorText } };
       }
 
-      // 针对常见错误码进行中文转义
       if (response.status === 402) {
-        throw new Error("API 账户余额不足：请前往 DeepSeek 官网充值后再试。");
+        throw new Error("API 账户余额不足：请提醒管理员充值。");
       } else if (response.status === 401) {
-        throw new Error("API Key 无效：请检查设置中的 Key 是否填写正确。");
-      } else if (response.status === 429) {
-        throw new Error("请求频率过高：请稍后再试。");
+        throw new Error("API Key 无效：内置的密钥可能已过期或被撤销。");
       }
       
-      throw new Error(errorInfo.error?.message || `服务器请求失败 (${response.status})`);
+      throw new Error(errorInfo.error?.message || `请求失败 (${response.status})`);
     }
 
     const data = await response.json();
     let content = data.choices[0].message.content.trim();
 
-    // 清洗 Markdown 标签
     if (content.startsWith("```")) {
       content = content.replace(/^```json\n?/, "").replace(/\n?```$/, "");
     }
 
     return JSON.parse(content) as AnalysisResult;
   } catch (error: any) {
-    // 捕获跨域或网络断开等底层错误
     if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-      throw new Error("网络请求失败：请检查网络连接，或确认您的浏览器是否拦截了对 api.deepseek.com 的跨域请求。");
+      throw new Error("网络连接失败：直接调用 DeepSeek 接口可能存在跨域限制。如果是在网页运行，建议安装浏览器 CORS 插件，或在本地环境下通过特定的代理模式运行。");
     }
-    console.error("LegalService Error:", error);
     throw error;
   }
 };
