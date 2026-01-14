@@ -2,17 +2,22 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AnalysisResult, CaseInput } from './types';
 import { analyzeLitigationData } from './services/legalService';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import { 
   FileText, Layers, Settings, CheckCircle, AlertTriangle, Gavel, 
   Loader2, ShieldCheck, Scale, Trash2, Key, Zap, Copy, FileSearch, 
   BookOpen, ArrowRight, Sparkles, Info, Lock, Unlock, ShieldAlert,
-  Sword, BookMarked, MessageSquareText, Landmark, RefreshCw, PlusCircle
+  Sword, BookMarked, MessageSquareText, Landmark, RefreshCw, PlusCircle,
+  Download, Image as ImageIcon, ChevronDown
 } from 'lucide-react';
 
 const App: React.FC = () => {
   const [caseInfo, setCaseInfo] = useState('');
   const [claims, setClaims] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [activeTab, setActiveTab] = useState<'input' | 'settings'>('input');
@@ -20,6 +25,7 @@ const App: React.FC = () => {
   const [devMode, setDevMode] = useState(localStorage.getItem('DEV_MODE') === 'true');
   const [logoClicks, setLogoClicks] = useState(0);
   const resultRef = useRef<HTMLDivElement>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
 
   const handleLogoClick = () => {
     const newCount = logoClicks + 1;
@@ -36,6 +42,16 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+        setShowExportMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
     const saved = localStorage.getItem('legal_case_web_draft');
     if (saved) {
       try {
@@ -48,7 +64,6 @@ const App: React.FC = () => {
     if (savedResult) {
       try { 
         const parsed = JSON.parse(savedResult);
-        // 增加数据结构完整性验证，如果不是对象或者缺失关键数组，则不加载
         if (parsed && typeof parsed === 'object' && Array.isArray(parsed.evidenceList || [])) {
           setResult(parsed); 
         } else {
@@ -95,10 +110,56 @@ const App: React.FC = () => {
     }
   };
 
-  const copyReport = () => {
-    if (!result) return;
-    navigator.clipboard.writeText(JSON.stringify(result, null, 2));
-    alert('结构化报告已复制到剪贴板');
+  const generateCanvas = async () => {
+    if (!resultRef.current) return null;
+    setIsExporting(true);
+    // 给一些缓冲时间让 UI 完全渲染
+    await new Promise(r => setTimeout(r, 100));
+    
+    try {
+      const canvas = await html2canvas(resultRef.current, {
+        scale: 2, // 2倍清晰度
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#F8FAFC', // 匹配背景色
+        windowWidth: 1200, // 锁定宽度以获得一致的排版
+      });
+      return canvas;
+    } catch (err) {
+      console.error("生成画布失败", err);
+      alert("生成失败，请重试");
+      return null;
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const exportToImage = async () => {
+    const canvas = await generateCanvas();
+    if (!canvas) return;
+    
+    const image = canvas.toDataURL("image/png");
+    const link = document.createElement('a');
+    link.href = image;
+    link.download = `法律分析报告_${new Date().toLocaleDateString()}.png`;
+    link.click();
+    setShowExportMenu(false);
+  };
+
+  const exportToPDF = async () => {
+    const canvas = await generateCanvas();
+    if (!canvas) return;
+
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF({
+      orientation: 'p',
+      unit: 'px',
+      format: [canvas.width / 2, canvas.height / 2] // 对应 2x scale
+    });
+    
+    pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / 2, canvas.height / 2);
+    pdf.save(`法律分析报告_${new Date().toLocaleDateString()}.pdf`);
+    setShowExportMenu(false);
   };
 
   return (
@@ -143,10 +204,36 @@ const App: React.FC = () => {
              <button onClick={clearSession} title="重置" className="p-2 text-slate-400 hover:text-rose-500 transition-colors">
                <RefreshCw size={18} />
              </button>
+             
              {result && activeTab === 'input' && (
-               <button onClick={copyReport} className="flex items-center gap-2 text-[10px] font-black bg-slate-900 text-white px-4 py-2 rounded-full hover:bg-blue-600 transition-all active:scale-95">
-                 <Copy size={12} /> 复制报告
-               </button>
+               <div className="relative" ref={exportMenuRef}>
+                 <button 
+                  onClick={() => setShowExportMenu(!showExportMenu)}
+                  disabled={isExporting}
+                  className="flex items-center gap-2 text-[10px] font-black bg-slate-900 text-white px-4 py-2 rounded-full hover:bg-blue-600 transition-all active:scale-95 disabled:bg-slate-400"
+                 >
+                   {isExporting ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                   {isExporting ? '处理中...' : '导出报告'}
+                   <ChevronDown size={10} className={`transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
+                 </button>
+
+                 {showExportMenu && (
+                   <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-2xl shadow-2xl py-2 z-[60] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                     <button 
+                      onClick={exportToPDF}
+                      className="w-full px-5 py-3 text-left text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+                     >
+                       <FileText size={14} className="text-rose-500" /> 导出为 PDF
+                     </button>
+                     <button 
+                      onClick={exportToImage}
+                      className="w-full px-5 py-3 text-left text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+                     >
+                       <ImageIcon size={14} className="text-blue-500" /> 导出为高清长图
+                     </button>
+                   </div>
+                 )}
+               </div>
              )}
           </div>
         </header>
@@ -206,14 +293,14 @@ const App: React.FC = () => {
               </div>
 
               {result && (
-                <div ref={resultRef} className="space-y-10 pt-12 animate-in pb-20">
-                  <div className="flex items-center gap-3">
+                <div ref={resultRef} className="space-y-10 pt-12 animate-in pb-20 bg-[#F8FAFC]">
+                  <div className="flex items-center gap-3 px-2">
                     <Sparkles className="text-amber-500" size={28} />
                     <h2 className="text-3xl font-black text-slate-800 tracking-tight">结构化法律分析报告</h2>
                   </div>
 
                   {/* 核心诉讼策略 */}
-                  <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white shadow-2xl relative overflow-hidden">
+                  <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white shadow-2xl relative overflow-hidden mx-2">
                     <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 blur-[100px] pointer-events-none"></div>
                     <div className="flex items-center gap-4 mb-6 relative">
                       <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
@@ -221,11 +308,11 @@ const App: React.FC = () => {
                       </div>
                       <h3 className="text-lg font-black uppercase tracking-widest">核心诉讼方案</h3>
                     </div>
-                    <p className="text-lg leading-relaxed text-blue-50/90 font-medium">{result.strategy || "暂无方案内容"}</p>
+                    <p className="text-lg leading-relaxed text-blue-50/90 font-medium whitespace-pre-wrap">{result.strategy || "暂无方案内容"}</p>
                   </div>
 
                   {/* 证据矩阵 */}
-                  <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden">
+                  <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 overflow-hidden mx-2">
                     <div className="px-10 py-6 border-b border-slate-100 bg-slate-50/50 flex items-center gap-3">
                       <Layers size={20} className="text-blue-600" />
                       <h3 className="font-black text-sm uppercase tracking-widest text-slate-600">证据矩阵分析</h3>
@@ -261,8 +348,8 @@ const App: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* 证据补强建议 - 之前缺失的模块 */}
-                  <section className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 p-10">
+                  {/* 证据补强建议 */}
+                  <section className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 p-10 mx-2">
                     <div className="flex items-center gap-4 mb-8">
                       <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center">
                         <PlusCircle size={22} className="text-indigo-600" />
@@ -285,7 +372,7 @@ const App: React.FC = () => {
                     </div>
                   </section>
 
-                  <div className="grid md:grid-cols-2 gap-8">
+                  <div className="grid md:grid-cols-2 gap-8 px-2">
                     {/* 关键法律焦点 */}
                     <section className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 p-10">
                       <div className="flex items-center gap-4 mb-8">
@@ -327,7 +414,7 @@ const App: React.FC = () => {
                   </div>
 
                   {/* 模拟对抗 */}
-                  <section className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 p-10">
+                  <section className="bg-white rounded-[2.5rem] shadow-sm border border-slate-200 p-10 mx-2">
                     <div className="flex items-center gap-4 mb-8">
                       <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center">
                         <Sword size={22} className="text-amber-600" />
@@ -351,7 +438,7 @@ const App: React.FC = () => {
                   </section>
 
                   {/* 法律条文与案例 */}
-                  <div className="grid lg:grid-cols-3 gap-8">
+                  <div className="grid lg:grid-cols-3 gap-8 px-2 pb-10">
                     <div className="lg:col-span-1 bg-blue-600 rounded-[2.5rem] p-10 text-white shadow-xl">
                       <div className="flex items-center gap-4 mb-8">
                         <BookMarked size={24} />
