@@ -132,10 +132,10 @@ const App: React.FC = () => {
         <div className="mt-auto pt-6 border-t border-slate-800">
           <div className="p-4 bg-slate-800/50 rounded-2xl">
             <div className="flex items-center gap-2 mb-2">
-              <Globe size={12} className="text-blue-400" />
-              <span className="text-[10px] font-black text-blue-400 uppercase tracking-widest">Global Proxy</span>
+              <ShieldCheck size={12} className="text-emerald-400" />
+              <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Official Connect</span>
             </div>
-            <p className="text-[10px] text-slate-500 leading-relaxed font-medium">代理网关：deepseek-proxy.wxxcxzhuanyong.workers.dev</p>
+            <p className="text-[10px] text-slate-500 leading-relaxed font-medium">直连官方接口：api.deepseek.com</p>
           </div>
         </div>
       </aside>
@@ -217,7 +217,7 @@ const App: React.FC = () => {
                 className="w-full py-6 bg-blue-600 text-white rounded-3xl font-black text-base shadow-2xl shadow-blue-200 hover:bg-blue-700 active:scale-[0.99] transition-all flex items-center justify-center gap-3 disabled:bg-slate-300 disabled:shadow-none"
               >
                 {isLoading ? <Loader2 className="animate-spin" size={24} /> : <Zap size={24} />}
-                {isLoading ? '正在进行法律逻辑推理...' : '生成证据矩阵报告'}
+                {isLoading ? '正在通过官方通道进行法律推理...' : '生成证据矩阵报告'}
               </button>
 
               {/* Analysis Result Display */}
@@ -337,7 +337,7 @@ const App: React.FC = () => {
                     <Key className="text-blue-600" size={36} />
                   </div>
                   <h3 className="font-black text-xl mb-2">服务接入配置</h3>
-                  <p className="text-slate-400 text-xs">通过私有代理网关安全访问 DeepSeek 模型</p>
+                  <p className="text-slate-400 text-xs">通过 DeepSeek 官方 API 进行请求</p>
                 </div>
                 
                 <div className="space-y-8">
@@ -359,9 +359,9 @@ const App: React.FC = () => {
                     <Info className="text-slate-400 shrink-0" size={20} />
                     <div className="space-y-2">
                       <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
-                        当前使用代理：<br/><code className="text-blue-600">deepseek-proxy.wxxcxzhuanyong.workers.dev</code>
+                        当前已切换为直连模式：<br/><code className="text-blue-600">api.deepseek.com</code>
                       </p>
-                      <p className="text-[10px] text-slate-400">若点击提交无响应，请按下 F12 查看 Console 控制台是否有报错。</p>
+                      <p className="text-[10px] text-slate-400">注意：若点击生成无响应，请按下 F12 查看 Console。如果是跨域（CORS）报错，说明 DeepSeek 官方尚未允许浏览器端直接发起请求，建议切换回代理模式或使用特定的浏览器插件。</p>
                     </div>
                   </div>
 

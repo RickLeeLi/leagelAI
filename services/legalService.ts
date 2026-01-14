@@ -27,7 +27,8 @@ JSON 结构需包含：
 请针对以上内容生成证据矩阵报告。`;
 
   try {
-    const response = await fetch("https://deepseek-proxy.wxxcxzhuanyong.workers.dev/v1/chat/completions", {
+    // 改为直接请求 DeepSeek 官方接口
+    const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -74,6 +75,10 @@ JSON 结构需包含：
 
     return JSON.parse(content) as AnalysisResult;
   } catch (error: any) {
+    // 捕获跨域或网络断开等底层错误
+    if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+      throw new Error("网络请求失败：请检查网络连接，或确认您的浏览器是否拦截了对 api.deepseek.com 的跨域请求。");
+    }
     console.error("LegalService Error:", error);
     throw error;
   }
