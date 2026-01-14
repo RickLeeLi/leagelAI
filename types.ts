@@ -1,17 +1,13 @@
 
 export interface EvidenceItem {
-  id: string;
   name: string;
-  type: string;
   provedFact: string;
-  source: string;
   reliability: 'High' | 'Medium' | 'Low';
 }
 
 export interface ReinforcementPoint {
   gap: string;
   suggestion: string;
-  priority: 'High' | 'Medium' | 'Low';
 }
 
 export interface LitigationRisk {
@@ -26,13 +22,26 @@ export interface CaseReference {
   year: string;
   summary: string;
   outcome: string;
-  similarity: number;
+}
+
+export interface StatuteItem {
+  name: string;
+  content: string;
+}
+
+export interface ConfrontationPoint {
+  opponentArgument: string;
+  counterStrategy: string;
 }
 
 export interface AnalysisResult {
   evidenceList: EvidenceItem[];
+  strategy: string; // 诉讼方案
+  keyPoints: string[]; // 关键点
   reinforcement: ReinforcementPoint[];
   risks: LitigationRisk[];
+  confrontation: ConfrontationPoint[]; // 模拟对抗
+  statutes: StatuteItem[]; // 相应法条
   caseLaw: CaseReference[];
 }
 
