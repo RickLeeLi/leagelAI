@@ -80,11 +80,15 @@ const App: React.FC = () => {
     localStorage.setItem('legal_case_web_draft', JSON.stringify({ caseInfo, claims, evidenceList }));
   }, [caseInfo, claims, evidenceList]);
 
+  /**
+   * FIX: 显式将 Array.from(files) 转换为 File[]，
+   * 以解决 TypeScript 将其推断为 unknown[] 导致的 name, type, size 属性不存在以及 readAsDataURL 参数类型不匹配的错误。
+   */
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
 
-    Array.from(files).forEach(file => {
+    (Array.from(files) as File[]).forEach(file => {
       const reader = new FileReader();
       reader.onload = (event) => {
         const newItem: EvidenceItem = {

@@ -1,113 +1,76 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResult, CaseInput } from "../types";
 
-// Always use process.env.API_KEY directly for initialization as per guidelines
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+/**
+ * 提示：如果您在本地双击 HTML 运行，请直接在下方引号内填入您的 DeepSeek API Key。
+ * 如果您部署在 Cloudflare Pages 或 Vercel，请在后台设置 API_KEY 环境变量。
+ */
+const USER_CUSTOM_KEY = "sk-2918a7d216c14a4bb516b154fabff6cf"; // <--- 在这里填入您的 DeepSeek API Key
+
+/**
+ * DeepSeek API 调用封装
+ */
+const callDeepSeek = async (systemPrompt: string, userPrompt: string, isJson: boolean = true) => {
+  // 优先顺序：代码内填写的 Key > 环境变量
+  const apiKey = USER_CUSTOM_KEY || process.env.API_KEY;
+  
+  if (!apiKey || apiKey === "") {
+    throw new Error("未检测到 DeepSeek API Key。\n\n本地运行：请用记事本打开 services/legalService.ts，在 USER_CUSTOM_KEY 处填入您的 Key。\n服务器运行：请在环境变量中配置 API_KEY。");
+  }
+
+  const response = await fetch("https://api.deepseek.com/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: "deepseek-chat",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      response_format: isJson ? { type: "json_object" } : { type: "text" },
+      stream: false,
+      temperature: 0.7
+    })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    if (response.status === 401) {
+      throw new Error("API Key 校验失败，请检查您的 DeepSeek 余额或 Key 是否正确。");
+    }
+    throw new Error(errorData.error?.message || `API 请求失败: ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data.choices[0].message.content;
+};
 
 export const analyzeLitigationData = async (
   input: CaseInput
 ): Promise<AnalysisResult> => {
-  /* Use gemini-3-pro-preview for complex reasoning tasks like legal analysis */
   const systemPrompt = `你是一位专注中国民商事诉讼的资深大律师。
-请基于《民法典》、《民事诉讼法》及其证据规定，对输入的案情 and 证据清单进行全维度法律分析。
-如果是审计证据，请重点评估证据的‘三性’（真实性、合法性、关联性）。
-你必须严格输出符合指定结构的 JSON 对象，不要包含 Markdown 代码块。`;
+任务：基于案情和证据清单进行法律分析。如果是审计证据，重点评估真实性、合法性、关联性。
+必须严格输出 JSON 格式，结构如下：
+{
+  "evidenceList": [{"name": "...", "provedFact": "...", "reliability": "High/Medium/Low"}],
+  "strategy": "全局诉讼策略描述",
+  "keyPoints": ["争议焦点1", "争议焦点2"],
+  "reinforcement": [{"gap": "证据断裂点", "suggestion": "补强方案"}],
+  "risks": [{"riskPoint": "风险点", "description": "描述", "mitigation": "对策"}],
+  "confrontation": [{"opponentArgument": "对方可能主张", "counterStrategy": "我方反驳要点"}],
+  "statutes": [{"name": "法条名称", "content": "法条内容"}],
+  "caseLaw": [{"title": "案例标题", "court": "法院", "year": "年份", "summary": "裁判摘要", "outcome": "胜诉"}]
+}`;
 
-  const evidenceDescription = input.evidenceFiles.map(f => `文件名：${f.name}, 律师标注的证明目的：${f.provedFact}`).join('\n');
+  const evidenceDescription = input.evidenceFiles.map(f => `文件名：${f.name}, 律师标注目的：${f.provedFact}`).join('\n');
   const userPrompt = `案情描述：${input.caseInfo}\n诉讼请求：${input.claims}\n证据清单：\n${evidenceDescription}`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-pro-preview",
-      contents: userPrompt,
-      config: {
-        systemInstruction: systemPrompt,
-        temperature: 0.3,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            evidenceList: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  name: { type: Type.STRING },
-                  provedFact: { type: Type.STRING },
-                  reliability: { type: Type.STRING }
-                },
-                required: ['name', 'provedFact', 'reliability']
-              }
-            },
-            strategy: { type: Type.STRING },
-            keyPoints: { type: Type.ARRAY, items: { type: Type.STRING } },
-            reinforcement: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  gap: { type: Type.STRING },
-                  suggestion: { type: Type.STRING }
-                },
-                required: ['gap', 'suggestion']
-              }
-            },
-            risks: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  riskPoint: { type: Type.STRING },
-                  description: { type: Type.STRING },
-                  mitigation: { type: Type.STRING }
-                },
-                required: ['riskPoint', 'description', 'mitigation']
-              }
-            },
-            confrontation: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  opponentArgument: { type: Type.STRING },
-                  counterStrategy: { type: Type.STRING }
-                },
-                required: ['opponentArgument', 'counterStrategy']
-              }
-            },
-            statutes: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  name: { type: Type.STRING },
-                  content: { type: Type.STRING }
-                },
-                required: ['name', 'content']
-              }
-            },
-            caseLaw: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  title: { type: Type.STRING },
-                  court: { type: Type.STRING },
-                  year: { type: Type.STRING },
-                  summary: { type: Type.STRING },
-                  outcome: { type: Type.STRING }
-                },
-                required: ['title', 'court', 'year', 'summary', 'outcome']
-              }
-            }
-          },
-          required: ['evidenceList', 'strategy', 'keyPoints', 'reinforcement', 'risks', 'confrontation', 'statutes', 'caseLaw']
-        }
-      }
-    });
-
-    const result = JSON.parse(response.text || "{}");
+    const content = await callDeepSeek(systemPrompt, userPrompt);
+    const result = JSON.parse(content);
     
     return {
       evidenceList: result.evidenceList || [],
@@ -120,7 +83,7 @@ export const analyzeLitigationData = async (
       caseLaw: result.caseLaw || []
     } as AnalysisResult;
   } catch (error: any) {
-    console.error("Gemini Analysis Error:", error);
+    console.error("DeepSeek Analysis Error:", error);
     throw error;
   }
 };
@@ -129,28 +92,16 @@ export const generateBraggingContent = async (
   style: string,
   context?: string
 ): Promise<string[]> => {
-  /* Use gemini-3-flash-preview for simpler content generation tasks */
-  const systemPrompt = `你是一位精通人情世故、深谙律师圈潜规则、谈吐不凡的资深大律师。任务：生成5条用于微信群聊或社交场合的‘装逼’话术或专业回复。直接返回一个包含5个字符串的 JSON 数组。`;
-  const userPrompt = `风格：${style}${context ? `\n背景：${context}` : ''}`;
+  const systemPrompt = `你是一位精通律师圈潜规则、谈吐不凡的大律师。生成5条律师社交‘装逼’话术或专业回复。
+必须直接返回一个 JSON 数组，例如: ["话术1", "话术2", ...]`;
+  
+  const userPrompt = `风格：${style}${context ? `\n背景环境：${context}` : ''}`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: userPrompt,
-      config: {
-        systemInstruction: systemPrompt,
-        temperature: 0.8,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: { type: Type.STRING }
-        }
-      }
-    });
-
-    return JSON.parse(response.text || "[]");
+    const content = await callDeepSeek(systemPrompt, userPrompt);
+    return JSON.parse(content);
   } catch (error) {
-    console.error("Gemini Bragging Error:", error);
-    return ["AI 暂时短路，请稍后再试。"];
+    console.error("DeepSeek Bragging Error:", error);
+    return ["AI 正在开庭，请稍后再试。"];
   }
 };

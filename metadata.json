@@ -1,6 +1,6 @@
 {
-  "name": "律政牛马盒",
-  "description": "专业诉棍证据矩阵分析工具，支持离线运行与本地导出。",
+  "name": "诉棍快乐屋",
+  "description": "律师摸鱼助手让你少奋斗20年",
   "requestFramePermissions": [
     "microphone"
   ]
