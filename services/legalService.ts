@@ -20,70 +20,53 @@ const callDeepSeek = async (systemPrompt: string, userPrompt: string, isJson: bo
         { role: "user", content: userPrompt }
       ],
       response_format: isJson ? { type: "json_object" } : { type: "text" },
-      temperature: 0.3,
-      max_tokens: 3000, 
-      top_p: 0.9
+      temperature: 0.2,
+      max_tokens: 4000
     })
   });
 
   if (!response.ok) throw new Error(`请求失败: ${response.status}`);
   const data = await response.json();
   let content = data.choices[0].message.content;
-
-  // 防御性处理：移除模型可能返回的 Markdown 代码块标识
-  if (isJson) {
-    content = content.replace(/```json\n?|```/g, "").trim();
-  }
-  
+  if (isJson) content = content.replace(/```json\n?|```/g, "").trim();
   return content;
 };
 
 export const analyzeLitigationData = async (input: CaseInput): Promise<AnalysisResult> => {
-  const systemPrompt = `你是一位专注中国民商事诉讼的资深大律师。
-任务：根据案情提供专业的诉讼方案。
-核心要求：即使用户没有指定案由，你也必须主动识别2-3个最可能的法律关系（案由），并在报告开头对比它们的举证难度、管辖利弊和赔偿支持度。
-性能要求：言简意赅，法条列出关键条款摘要。
-格式：必须严格输出 JSON。
-JSON 结构：
+  const systemPrompt = `你是一位专注中国民商事诉讼的资深大律师。请基于案情、诉求、管辖地及证据，生成一份极其详尽、具备实操价值的“诉讼策略及证明要件分析报告”。
+
+输出格式必须为 JSON，字段如下：
 {
-  "causeComparison": [{"name": "案由名称", "pros": "优势", "cons": "劣势", "difficulty": "中/高/低"}],
-  "evidenceList": [{"name": "证据名", "provedFact": "审计意见", "reliability": "High/Medium/Low"}],
-  "strategy": "标准法律分析报告正文",
-  "keyPoints": ["争议焦点"],
-  "reinforcement": [{"gap": "事实断裂", "suggestion": "补强方法"}],
-  "risks": [{"riskPoint": "风险项", "description": "描述", "mitigation": "建议"}],
-  "confrontation": [{"opponentArgument": "对方反驳", "counterStrategy": "我方抗辩建议"}],
-  "statutes": [{"name": "法条名", "content": "条款摘要"}],
-  "caseLaw": [{"title": "案例", "court": "法院", "summary": "裁判要旨"}]
-}`;
+  "causeComparison": [{"pathName": "案由名称", "jurisdiction": "具体管辖建议", "costEstimate": "诉讼费/保全费预估", "pros": "优势分析", "cons": "风险/劣势"}],
+  "litigationPlan": "分阶段的诉讼执行具体步骤，包括起诉、保全、调解、庭审等建议。",
+  "proofMatrix": [{"elementName": "要件名称", "status": "success|warning|danger", "analysis": "现有证据对该要件的支撑程度分析", "fixSuggestion": "具体的补强证据建议"}],
+  "keyIssues": ["核心争议焦点1", "核心争议焦点2"],
+  "combatCards": [{"opponentAttack": "对方可能的抗辩点", "counterLogic": "我方应对的反驳逻辑", "supportingEvidence": "支撑反击的法律依据或事实"}],
+  "risks": [{"point": "风险点", "plan": "应对预案"}],
+  "statutes": [{"name": "法律法规名称", "content": "关键条款摘要"}],
+  "compensationSchemes": ["赔偿方案1(计算方式)", "赔偿方案2(计算方式)"]
+}
+
+专业要求：
+1. 路径选择必须根据建议案由顺序编号。
+2. 证明矩阵必须严格按照法律构成要件（如合同纠纷：主体、合同、履行、违约、损失）拆解。
+3. 对抗模拟需精准预测庭审攻防。
+4. 赔偿方案需给出具体的计算标准。`;
 
   const userPrompt = `
-  案情描述：${input.caseInfo}
+  案情事实：${input.caseInfo}
   诉讼请求：${input.claims}
-  证据情况：${input.evidenceFiles.map(e => e.name + "(" + (e.provedFact || "未标注证明目的") + ")").join("; ")}`;
+  原告地：${input.plaintiffLoc} | 被告地：${input.defendantLoc}
+  立场：${input.mySide === 'plaintiff' ? '原告方' : '被告方'}
+  证据现状：${input.evidenceFiles.map(e => e.name + (e.provedFact ? `[${e.provedFact}]` : '')).join('; ')}`;
 
   const content = await callDeepSeek(systemPrompt, userPrompt);
-  try {
-    const result = JSON.parse(content);
-    return result as AnalysisResult;
-  } catch (e) {
-    console.error("JSON 解析失败:", content);
-    throw new Error("AI 返回数据格式错误，请重试");
-  }
+  return JSON.parse(content) as AnalysisResult;
 };
 
 export const generateBraggingContent = async (style: string, context?: string): Promise<string[]> => {
-  const systemPrompt = `你是一个幽默犀利的资深律师助手。请根据风格生成5条社交话术或回复。返回格式必须是纯 JSON 字符串数组，例如 ["话术1", "话术2"]。不要包含任何 Markdown 标识。`;
-  const userPrompt = `分类风格：${style}${context ? ` 对方聊天内容：${context}` : ''}`;
+  const systemPrompt = `律政社交大师。根据场景生成5条回复或动态。返回纯JSON字符串数组。`;
+  const userPrompt = `场景：${style}${context ? ` 对方说：${context}` : ''}`;
   const content = await callDeepSeek(systemPrompt, userPrompt);
-  try {
-    const result = JSON.parse(content);
-    // 确保返回的是数组
-    if (Array.isArray(result)) return result;
-    if (result.results && Array.isArray(result.results)) return result.results;
-    return ["生成失败，请稍后重试"];
-  } catch (e) {
-    console.error("话术 JSON 解析失败:", content);
-    return ["生成话术时解析出错，请再试一次"];
-  }
+  return JSON.parse(content);
 };
