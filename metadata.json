@@ -1,5 +1,8 @@
+
 {
-  "name": "Litigation Pro Cloud",
-  "description": "Professional Legal Analysis System deployed on Cloudflare Pages.",
-  "requestFramePermissions": []
+  "name": "律政牛马盒",
+  "description": "专业诉棍证据矩阵分析工具，支持离线运行与本地导出。",
+  "requestFramePermissions": [
+    "microphone"
+  ]
 }

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AnalysisResult, CaseInput } from './types';
-import { analyzeLitigationData } from './services/legalService';
+import { analyzeLitigationData, generateBraggingContent } from './services/legalService';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { 
@@ -9,7 +9,7 @@ import {
   Loader2, ShieldCheck, Scale, Trash2, Key, Zap, Copy, FileSearch, 
   BookOpen, ArrowRight, Sparkles, Info, Lock, Unlock, ShieldAlert,
   Sword, BookMarked, MessageSquareText, Landmark, RefreshCw, PlusCircle,
-  Download, Image as ImageIcon, ChevronDown
+  Download, Image as ImageIcon, ChevronDown, User, Coffee, Megaphone, Send
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -20,10 +20,17 @@ const App: React.FC = () => {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
-  const [activeTab, setActiveTab] = useState<'input' | 'settings'>('input');
+  const [activeTab, setActiveTab] = useState<'input' | 'settings' | 'bragging'>('input');
   const [apiKey, setApiKey] = useState(localStorage.getItem('DEEPSEEK_API_KEY') || '');
   const [devMode, setDevMode] = useState(localStorage.getItem('DEV_MODE') === 'true');
   const [logoClicks, setLogoClicks] = useState(0);
+  
+  // 装逼神器状态
+  const [bragStyle, setBragStyle] = useState('随机');
+  const [bragContext, setBragContext] = useState('');
+  const [bragResults, setBragResults] = useState<string[]>([]);
+  const [isBragLoading, setIsBragLoading] = useState(false);
+
   const resultRef = useRef<HTMLDivElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
 
@@ -100,6 +107,18 @@ const App: React.FC = () => {
     }
   };
 
+  const handleGenerateBrag = async () => {
+    setIsBragLoading(true);
+    try {
+      const results = await generateBraggingContent(bragStyle, bragContext);
+      setBragResults(results);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsBragLoading(false);
+    }
+  };
+
   const clearSession = () => {
     if (window.confirm("确定要清除当前案情和分析结果吗？")) {
       setCaseInfo('');
@@ -113,16 +132,14 @@ const App: React.FC = () => {
   const generateCanvas = async () => {
     if (!resultRef.current) return null;
     setIsExporting(true);
-    // 给一些缓冲时间让 UI 完全渲染
     await new Promise(r => setTimeout(r, 100));
-    
     try {
       const canvas = await html2canvas(resultRef.current, {
-        scale: 2, // 2倍清晰度
+        scale: 2,
         useCORS: true,
         logging: false,
-        backgroundColor: '#F8FAFC', // 匹配背景色
-        windowWidth: 1200, // 锁定宽度以获得一致的排版
+        backgroundColor: '#F8FAFC',
+        windowWidth: 1200,
       });
       return canvas;
     } catch (err) {
@@ -137,7 +154,6 @@ const App: React.FC = () => {
   const exportToImage = async () => {
     const canvas = await generateCanvas();
     if (!canvas) return;
-    
     const image = canvas.toDataURL("image/png");
     const link = document.createElement('a');
     link.href = image;
@@ -149,14 +165,12 @@ const App: React.FC = () => {
   const exportToPDF = async () => {
     const canvas = await generateCanvas();
     if (!canvas) return;
-
     const imgData = canvas.toDataURL('image/png');
     const pdf = new jsPDF({
       orientation: 'p',
       unit: 'px',
-      format: [canvas.width / 2, canvas.height / 2] // 对应 2x scale
+      format: [canvas.width / 2, canvas.height / 2]
     });
-    
     pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / 2, canvas.height / 2);
     pdf.save(`法律分析报告_${new Date().toLocaleDateString()}.pdf`);
     setShowExportMenu(false);
@@ -178,6 +192,7 @@ const App: React.FC = () => {
 
         <nav className="flex-grow space-y-2">
           <NavBtn active={activeTab === 'input'} onClick={() => setActiveTab('input')} icon={<FileSearch size={18} />} label="分析工作台" />
+          <NavBtn active={activeTab === 'bragging'} onClick={() => setActiveTab('bragging')} icon={<Megaphone size={18} />} label="装逼神器" />
           {devMode && <NavBtn active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} icon={<Settings size={18} />} label="系统配置" />}
         </nav>
 
@@ -198,12 +213,14 @@ const App: React.FC = () => {
           <div className="flex items-center gap-2 text-slate-400 text-[10px] font-bold uppercase tracking-[0.2em]">
             <span>Legal Analysis</span>
             <ArrowRight size={10} />
-            <span className="text-slate-900">{activeTab === 'input' ? 'Workbench' : 'Settings'}</span>
+            <span className="text-slate-900">{activeTab === 'input' ? 'Workbench' : activeTab === 'bragging' ? 'Bragging Tool' : 'Settings'}</span>
           </div>
           <div className="flex items-center gap-3">
-             <button onClick={clearSession} title="重置" className="p-2 text-slate-400 hover:text-rose-500 transition-colors">
-               <RefreshCw size={18} />
-             </button>
+             {activeTab === 'input' && (
+               <button onClick={clearSession} title="重置" className="p-2 text-slate-400 hover:text-rose-500 transition-colors">
+                 <RefreshCw size={18} />
+               </button>
+             )}
              
              {result && activeTab === 'input' && (
                <div className="relative" ref={exportMenuRef}>
@@ -340,9 +357,6 @@ const App: React.FC = () => {
                               </td>
                             </tr>
                           ))}
-                          {(!result.evidenceList || result.evidenceList.length === 0) && (
-                            <tr><td colSpan={3} className="px-10 py-6 text-center text-slate-400 text-xs">暂无证据项分析</td></tr>
-                          )}
                         </tbody>
                       </table>
                     </div>
@@ -451,7 +465,6 @@ const App: React.FC = () => {
                             <p className="text-sm leading-relaxed text-blue-50 font-medium">{item?.content || '内容缺失'}</p>
                           </div>
                         ))}
-                        {(!result.statutes || result.statutes.length === 0) && <p className="text-xs text-blue-200 italic">未匹配到精确法条</p>}
                       </div>
                     </div>
 
@@ -476,6 +489,83 @@ const App: React.FC = () => {
                       </div>
                     </div>
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'bragging' && (
+            <div className="max-w-4xl mx-auto space-y-8 animate-in">
+              <div className="bg-white rounded-[3rem] p-10 shadow-sm border border-slate-200">
+                <div className="flex flex-col items-center text-center mb-10">
+                  <div className="w-20 h-20 bg-amber-50 rounded-[2rem] flex items-center justify-center mb-6">
+                    <Megaphone className="text-amber-600" size={36} />
+                  </div>
+                  <h3 className="font-black text-2xl mb-2">群吹牛/专业回复生成器</h3>
+                  <p className="text-slate-400 text-xs tracking-widest uppercase font-bold">Showcase Professionalism with Style</p>
+                </div>
+
+                <div className="space-y-8">
+                  <div className="flex flex-wrap gap-3 justify-center">
+                    {['随机', '高冷', '穷嗨', '专业', '苦逼', '妖娆', '回复'].map((style) => (
+                      <button
+                        key={style}
+                        onClick={() => setBragStyle(style)}
+                        className={`px-6 py-3 rounded-full font-black text-sm transition-all border ${
+                          bragStyle === style 
+                          ? 'bg-slate-900 text-white border-transparent shadow-lg scale-105' 
+                          : 'bg-slate-50 text-slate-400 border-slate-100 hover:bg-slate-100'
+                        }`}
+                      >
+                        {style}
+                      </button>
+                    ))}
+                  </div>
+
+                  {bragStyle === '回复' && (
+                    <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">对方说了什么？</label>
+                      <textarea
+                        className="w-full p-6 bg-slate-50 border border-slate-200 rounded-3xl focus:ring-4 focus:ring-blue-100 outline-none text-sm leading-relaxed transition-all resize-none h-32"
+                        placeholder="粘贴对方在群里发的问题，我帮你秒回..."
+                        value={bragContext}
+                        onChange={(e) => setBragContext(e.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleGenerateBrag}
+                    disabled={isBragLoading}
+                    className="w-full py-6 bg-blue-600 text-white rounded-[2rem] font-black text-xl shadow-2xl shadow-blue-100 hover:bg-blue-700 disabled:bg-slate-300 transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
+                  >
+                    {isBragLoading ? <Loader2 className="animate-spin" size={24} /> : <Sparkles size={24} />}
+                    {isBragLoading ? 'AI 正在润色...' : '立即生成 5 条话术'}
+                  </button>
+                </div>
+              </div>
+
+              {bragResults.length > 0 && (
+                <div className="space-y-4 animate-in">
+                  <div className="flex items-center gap-2 px-6">
+                    <Coffee size={16} className="text-amber-500" />
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">生成结果（点击一键复制）</span>
+                  </div>
+                  {bragResults.map((item, i) => (
+                    <div
+                      key={i}
+                      onClick={() => {
+                        navigator.clipboard.writeText(item);
+                        alert("已复制到剪贴板！");
+                      }}
+                      className="group bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm hover:border-blue-500 hover:shadow-xl transition-all cursor-pointer relative overflow-hidden"
+                    >
+                      <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Copy size={16} className="text-blue-600" />
+                      </div>
+                      <p className="text-base font-bold text-slate-800 leading-relaxed group-hover:text-blue-700">{item}</p>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -507,7 +597,7 @@ const App: React.FC = () => {
                     />
                   </div>
                   <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 flex gap-3">
-                    <Info size={18} className="text-amber-600 shrink-0" />
+                    <span className="text-amber-600 shrink-0"><Info size={18} /></span>
                     <p className="text-[10px] text-amber-800 leading-relaxed font-medium">注意：修改 Key 后建议清除缓存并重新运行。直接双击 HTML 运行时，请确保浏览器允许跨域请求或已安装相关插件。</p>
                   </div>
                   <button onClick={() => { localStorage.clear(); window.location.reload(); }} className="w-full py-5 text-rose-500 font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-rose-50 rounded-2xl transition-all active:scale-95">
@@ -527,20 +617,10 @@ const App: React.FC = () => {
         }
         .animate-in { animation: fade-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         
-        /* 自定义滚动条 */
-        ::-webkit-scrollbar {
-          width: 8px;
-        }
-        ::-webkit-scrollbar-track {
-          background: #f1f5f9;
-        }
-        ::-webkit-scrollbar-thumb {
-          background: #cbd5e1;
-          border-radius: 10px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-          background: #94a3b8;
-        }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
       `}</style>
     </div>
   );
