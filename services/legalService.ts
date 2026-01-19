@@ -1,22 +1,11 @@
 
 import { AnalysisResult, CaseInput } from "../types";
 
-/**
- * 提示：如果您在本地双击 HTML 运行，请直接在下方引号内填入您的 DeepSeek API Key。
- * 如果您部署在 Cloudflare Pages 或 Vercel，请在后台设置 API_KEY 环境变量。
- */
-const USER_CUSTOM_KEY = "sk-2918a7d216c14a4bb516b154fabff6cf"; // <--- 在这里填入您的 DeepSeek API Key
+const USER_CUSTOM_KEY = "sk-2918a7d216c14a4bb516b154fabff6cf";
 
-/**
- * DeepSeek API 调用封装
- */
 const callDeepSeek = async (systemPrompt: string, userPrompt: string, isJson: boolean = true) => {
-  // 优先顺序：代码内填写的 Key > 环境变量
   const apiKey = USER_CUSTOM_KEY || process.env.API_KEY;
-  
-  if (!apiKey || apiKey === "") {
-    throw new Error("未检测到 DeepSeek API Key。\n\n本地运行：请用记事本打开 services/legalService.ts，在 USER_CUSTOM_KEY 处填入您的 Key。\n服务器运行：请在环境变量中配置 API_KEY。");
-  }
+  if (!apiKey) throw new Error("未配置 API_KEY");
 
   const response = await fetch("https://api.deepseek.com/chat/completions", {
     method: "POST",
@@ -31,77 +20,70 @@ const callDeepSeek = async (systemPrompt: string, userPrompt: string, isJson: bo
         { role: "user", content: userPrompt }
       ],
       response_format: isJson ? { type: "json_object" } : { type: "text" },
-      stream: false,
-      temperature: 0.7
+      temperature: 0.3,
+      max_tokens: 3000, 
+      top_p: 0.9
     })
   });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    if (response.status === 401) {
-      throw new Error("API Key 校验失败，请检查您的 DeepSeek 余额或 Key 是否正确。");
-    }
-    throw new Error(errorData.error?.message || `API 请求失败: ${response.status}`);
-  }
-
+  if (!response.ok) throw new Error(`请求失败: ${response.status}`);
   const data = await response.json();
-  return data.choices[0].message.content;
+  let content = data.choices[0].message.content;
+
+  // 防御性处理：移除模型可能返回的 Markdown 代码块标识
+  if (isJson) {
+    content = content.replace(/```json\n?|```/g, "").trim();
+  }
+  
+  return content;
 };
 
-export const analyzeLitigationData = async (
-  input: CaseInput
-): Promise<AnalysisResult> => {
+export const analyzeLitigationData = async (input: CaseInput): Promise<AnalysisResult> => {
   const systemPrompt = `你是一位专注中国民商事诉讼的资深大律师。
-任务：基于案情和证据清单进行法律分析。如果是审计证据，重点评估真实性、合法性、关联性。
-必须严格输出 JSON 格式，结构如下：
+任务：根据案情提供专业的诉讼方案。
+核心要求：即使用户没有指定案由，你也必须主动识别2-3个最可能的法律关系（案由），并在报告开头对比它们的举证难度、管辖利弊和赔偿支持度。
+性能要求：言简意赅，法条列出关键条款摘要。
+格式：必须严格输出 JSON。
+JSON 结构：
 {
-  "evidenceList": [{"name": "...", "provedFact": "...", "reliability": "High/Medium/Low"}],
-  "strategy": "全局诉讼策略描述",
-  "keyPoints": ["争议焦点1", "争议焦点2"],
-  "reinforcement": [{"gap": "证据断裂点", "suggestion": "补强方案"}],
-  "risks": [{"riskPoint": "风险点", "description": "描述", "mitigation": "对策"}],
-  "confrontation": [{"opponentArgument": "对方可能主张", "counterStrategy": "我方反驳要点"}],
-  "statutes": [{"name": "法条名称", "content": "法条内容"}],
-  "caseLaw": [{"title": "案例标题", "court": "法院", "year": "年份", "summary": "裁判摘要", "outcome": "胜诉"}]
+  "causeComparison": [{"name": "案由名称", "pros": "优势", "cons": "劣势", "difficulty": "中/高/低"}],
+  "evidenceList": [{"name": "证据名", "provedFact": "审计意见", "reliability": "High/Medium/Low"}],
+  "strategy": "标准法律分析报告正文",
+  "keyPoints": ["争议焦点"],
+  "reinforcement": [{"gap": "事实断裂", "suggestion": "补强方法"}],
+  "risks": [{"riskPoint": "风险项", "description": "描述", "mitigation": "建议"}],
+  "confrontation": [{"opponentArgument": "对方反驳", "counterStrategy": "我方抗辩建议"}],
+  "statutes": [{"name": "法条名", "content": "条款摘要"}],
+  "caseLaw": [{"title": "案例", "court": "法院", "summary": "裁判要旨"}]
 }`;
 
-  const evidenceDescription = input.evidenceFiles.map(f => `文件名：${f.name}, 律师标注目的：${f.provedFact}`).join('\n');
-  const userPrompt = `案情描述：${input.caseInfo}\n诉讼请求：${input.claims}\n证据清单：\n${evidenceDescription}`;
+  const userPrompt = `
+  案情描述：${input.caseInfo}
+  诉讼请求：${input.claims}
+  证据情况：${input.evidenceFiles.map(e => e.name + "(" + (e.provedFact || "未标注证明目的") + ")").join("; ")}`;
 
+  const content = await callDeepSeek(systemPrompt, userPrompt);
   try {
-    const content = await callDeepSeek(systemPrompt, userPrompt);
     const result = JSON.parse(content);
-    
-    return {
-      evidenceList: result.evidenceList || [],
-      strategy: result.strategy || "",
-      keyPoints: result.keyPoints || [],
-      reinforcement: result.reinforcement || [],
-      risks: result.risks || [],
-      confrontation: result.confrontation || [],
-      statutes: result.statutes || [],
-      caseLaw: result.caseLaw || []
-    } as AnalysisResult;
-  } catch (error: any) {
-    console.error("DeepSeek Analysis Error:", error);
-    throw error;
+    return result as AnalysisResult;
+  } catch (e) {
+    console.error("JSON 解析失败:", content);
+    throw new Error("AI 返回数据格式错误，请重试");
   }
 };
 
-export const generateBraggingContent = async (
-  style: string,
-  context?: string
-): Promise<string[]> => {
-  const systemPrompt = `你是一位精通律师圈潜规则、谈吐不凡的大律师。生成5条律师社交‘装逼’话术或专业回复。
-必须直接返回一个 JSON 数组，例如: ["话术1", "话术2", ...]`;
-  
-  const userPrompt = `风格：${style}${context ? `\n背景环境：${context}` : ''}`;
-
+export const generateBraggingContent = async (style: string, context?: string): Promise<string[]> => {
+  const systemPrompt = `你是一个幽默犀利的资深律师助手。请根据风格生成5条社交话术或回复。返回格式必须是纯 JSON 字符串数组，例如 ["话术1", "话术2"]。不要包含任何 Markdown 标识。`;
+  const userPrompt = `分类风格：${style}${context ? ` 对方聊天内容：${context}` : ''}`;
+  const content = await callDeepSeek(systemPrompt, userPrompt);
   try {
-    const content = await callDeepSeek(systemPrompt, userPrompt);
-    return JSON.parse(content);
-  } catch (error) {
-    console.error("DeepSeek Bragging Error:", error);
-    return ["AI 正在开庭，请稍后再试。"];
+    const result = JSON.parse(content);
+    // 确保返回的是数组
+    if (Array.isArray(result)) return result;
+    if (result.results && Array.isArray(result.results)) return result.results;
+    return ["生成失败，请稍后重试"];
+  } catch (e) {
+    console.error("话术 JSON 解析失败:", content);
+    return ["生成话术时解析出错，请再试一次"];
   }
 };
