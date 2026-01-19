@@ -1,8 +1,13 @@
 
 export interface EvidenceItem {
+  id: string;
   name: string;
-  provedFact: string;
+  type: string;
+  size: string;
+  data?: string; // Base64
+  provedFact: string; // 拟证明事实
   reliability: 'High' | 'Medium' | 'Low';
+  auditOpinion?: string; // AI 审计意见
 }
 
 export interface ReinforcementPoint {
@@ -36,17 +41,19 @@ export interface ConfrontationPoint {
 
 export interface AnalysisResult {
   evidenceList: EvidenceItem[];
-  strategy: string; // 诉讼方案
-  keyPoints: string[]; // 关键点
+  strategy: string; 
+  keyPoints: string[]; 
   reinforcement: ReinforcementPoint[];
   risks: LitigationRisk[];
-  confrontation: ConfrontationPoint[]; // 模拟对抗
-  statutes: StatuteItem[]; // 相应法条
+  confrontation: ConfrontationPoint[]; 
+  statutes: StatuteItem[]; 
   caseLaw: CaseReference[];
 }
 
 export interface CaseInput {
   caseInfo: string;
   claims: string;
-  evidenceFiles: File[];
+  evidenceFiles: EvidenceItem[];
 }
+
+export type TabType = 'strategy' | 'matrix' | 'bragging' | 'settings';

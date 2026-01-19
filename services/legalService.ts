@@ -1,72 +1,113 @@
 
+import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResult, CaseInput } from "../types";
 
-const EMBEDDED_KEY_B64 = "c2stMjkxOGE3ZDIxNmMxNGE0YmI1MTZiMTU0ZmFiZmY2Y2Y=";
-
-const getApiKey = () => {
-  const manualKey = localStorage.getItem('DEEPSEEK_API_KEY');
-  if (manualKey) return manualKey;
-  if (EMBEDDED_KEY_B64) {
-    try {
-      return atob(EMBEDDED_KEY_B64);
-    } catch (e) {
-      console.error("内置 Key 解析失败");
-    }
-  }
-  return null;
-};
+// Always use process.env.API_KEY directly for initialization as per guidelines
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const analyzeLitigationData = async (
   input: CaseInput
 ): Promise<AnalysisResult> => {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error("服务未配置，请联系管理员。");
-  }
-
+  /* Use gemini-3-pro-preview for complex reasoning tasks like legal analysis */
   const systemPrompt = `你是一位专注中国民商事诉讼的资深大律师。
-请基于《民法典》、《民事诉讼法》及其证据规定，对输入的案情进行全维度法律分析。
-必须严格输出合法的 JSON 对象，内容严禁缺失以下任何一个键：
-1. evidenceList: 数组，每个对象包含 (name, provedFact, reliability: 'High'|'Medium'|'Low')
-2. strategy: 字符串，核心诉讼策略与执行方案
-3. keyPoints: 字符串数组，3-5个关键法律争议点
-4. reinforcement: 数组，每个对象包含 (gap, suggestion) 证据补强建议
-5. risks: 数组，每个对象包含 (riskPoint, description, mitigation) 风险评估
-6. confrontation: 数组，每个对象包含 (opponentArgument, counterStrategy) 模拟对抗
-7. statutes: 数组，每个对象包含 (name, content) 引用法条
-8. caseLaw: 数组，每个对象包含 (title, court, year, summary, outcome) 类案参考
-注意：所有内容必须符合中国现行法律。不要包含 Markdown 代码块标签，直接输出 JSON 文本。`;
+请基于《民法典》、《民事诉讼法》及其证据规定，对输入的案情 and 证据清单进行全维度法律分析。
+如果是审计证据，请重点评估证据的‘三性’（真实性、合法性、关联性）。
+你必须严格输出符合指定结构的 JSON 对象，不要包含 Markdown 代码块。`;
 
-  const userPrompt = `案情描述：${input.caseInfo}\n诉讼请求：${input.claims}`;
+  const evidenceDescription = input.evidenceFiles.map(f => `文件名：${f.name}, 律师标注的证明目的：${f.provedFact}`).join('\n');
+  const userPrompt = `案情描述：${input.caseInfo}\n诉讼请求：${input.claims}\n证据清单：\n${evidenceDescription}`;
 
   try {
-    const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: "deepseek-chat",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        temperature: 0.3
-      })
+    const response = await ai.models.generateContent({
+      model: "gemini-3-pro-preview",
+      contents: userPrompt,
+      config: {
+        systemInstruction: systemPrompt,
+        temperature: 0.3,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            evidenceList: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  provedFact: { type: Type.STRING },
+                  reliability: { type: Type.STRING }
+                },
+                required: ['name', 'provedFact', 'reliability']
+              }
+            },
+            strategy: { type: Type.STRING },
+            keyPoints: { type: Type.ARRAY, items: { type: Type.STRING } },
+            reinforcement: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  gap: { type: Type.STRING },
+                  suggestion: { type: Type.STRING }
+                },
+                required: ['gap', 'suggestion']
+              }
+            },
+            risks: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  riskPoint: { type: Type.STRING },
+                  description: { type: Type.STRING },
+                  mitigation: { type: Type.STRING }
+                },
+                required: ['riskPoint', 'description', 'mitigation']
+              }
+            },
+            confrontation: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  opponentArgument: { type: Type.STRING },
+                  counterStrategy: { type: Type.STRING }
+                },
+                required: ['opponentArgument', 'counterStrategy']
+              }
+            },
+            statutes: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  content: { type: Type.STRING }
+                },
+                required: ['name', 'content']
+              }
+            },
+            caseLaw: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  title: { type: Type.STRING },
+                  court: { type: Type.STRING },
+                  year: { type: Type.STRING },
+                  summary: { type: Type.STRING },
+                  outcome: { type: Type.STRING }
+                },
+                required: ['title', 'court', 'year', 'summary', 'outcome']
+              }
+            }
+          },
+          required: ['evidenceList', 'strategy', 'keyPoints', 'reinforcement', 'risks', 'confrontation', 'statutes', 'caseLaw']
+        }
+      }
     });
 
-    if (!response.ok) {
-      throw new Error(`API 请求失败: ${response.status}`);
-    }
-
-    const data = await response.json();
-    let content = data.choices[0].message.content.trim();
-    if (content.startsWith("```")) {
-      content = content.replace(/^```json\n?/, "").replace(/\n?```$/, "");
-    }
-    
-    const result = JSON.parse(content);
+    const result = JSON.parse(response.text || "{}");
     
     return {
       evidenceList: result.evidenceList || [],
@@ -79,6 +120,7 @@ export const analyzeLitigationData = async (
       caseLaw: result.caseLaw || []
     } as AnalysisResult;
   } catch (error: any) {
+    console.error("Gemini Analysis Error:", error);
     throw error;
   }
 };
@@ -87,42 +129,28 @@ export const generateBraggingContent = async (
   style: string,
   context?: string
 ): Promise<string[]> => {
-  const apiKey = getApiKey();
-  if (!apiKey) throw new Error("服务未配置");
-
-  const systemPrompt = `你是一位精通人情世故、深谙律师圈潜规则、谈吐不凡的资深大律师。你的任务是根据指定的风格生成5条用于微信群聊或社交场合的‘装逼’话术或专业回复。要求：
-1. 风格鲜明：高冷、穷嗨、专业、苦逼、妖娆、回复。
-2. 包含适当的法律术语，显得专业。
-3. 幽默、风趣、或极度高冷，符合人设。
-4. 严禁输出 Markdown 代码块，直接返回一个 JSON 数组，包含5个不同的字符串。`;
-
-  const userPrompt = `风格：${style}${context ? `\n背景/对方问题：${context}` : ''}`;
+  /* Use gemini-3-flash-preview for simpler content generation tasks */
+  const systemPrompt = `你是一位精通人情世故、深谙律师圈潜规则、谈吐不凡的资深大律师。任务：生成5条用于微信群聊或社交场合的‘装逼’话术或专业回复。直接返回一个包含5个字符串的 JSON 数组。`;
+  const userPrompt = `风格：${style}${context ? `\n背景：${context}` : ''}`;
 
   try {
-    const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: "deepseek-chat",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        temperature: 0.8
-      })
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: userPrompt,
+      config: {
+        systemInstruction: systemPrompt,
+        temperature: 0.8,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING }
+        }
+      }
     });
 
-    const data = await response.json();
-    let content = data.choices[0].message.content.trim();
-    if (content.startsWith("```")) {
-      content = content.replace(/^```json\n?/, "").replace(/\n?```$/, "");
-    }
-    return JSON.parse(content);
+    return JSON.parse(response.text || "[]");
   } catch (error) {
-    console.error(error);
+    console.error("Gemini Bragging Error:", error);
     return ["AI 暂时短路，请稍后再试。"];
   }
 };
